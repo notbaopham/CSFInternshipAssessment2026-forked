@@ -1,37 +1,35 @@
 # FarmTracker Audit
-
 ## Overview
-FarmTracker is generally readable and functional, but has critical issues in data integrity, reliability, and frontend security. The highest risk lies in animal–paddock update flows, where multi-step database writes can fail partway and leave the system in an inconsistent state. Error handling is also inconsistent across API boundaries, and the frontend directly renders server-provided values in a way that can introduce stored XSS risk.
+FarmTracker is readable and mostly functional, but it has high-risk weaknesses in data integrity, reliability, and frontend safety. The most significant architectural issue is denormalized paddock `animal_count`, which is manually maintained across create, move, and delete flows and can drift from actual assignments. This risk is visible in [track2-fullstack/app/backend/routes/animals.js](track2-fullstack/app/backend/routes/animals.js). Combined with non-atomic multi-step writes and inconsistent error handling, the system can produce corrupted state or unstable API behavior under failure conditions. Frontend rendering also introduces stored XSS risk through direct HTML injection of API data in [track2-fullstack/app/frontend/animals.html](track2-fullstack/app/frontend/animals.html) and [track2-fullstack/app/frontend/animal-detail.html](track2-fullstack/app/frontend/animal-detail.html).
 
-Priority should be given to correctness and safety, followed by API consistency, and then performance and maintainability improvements.
+Priority is therefore: correctness and safety first, API consistency second, then scalability and maintainability.
 
-## Key Issues
-
+## Key Issues and Priorities
 ### P0: Correctness, Integrity, Security (Fix First)
-- Animal–paddock operations (create/move/delete) are not atomic; partial failures can desync paddock counts from actual animal assignments.
-- Missing transactional boundaries across multi-step writes increases risk of corrupted state under failure or concurrency.
-- Database constraint violations (e.g., duplicate identifiers, invalid references) are not consistently translated into safe API error responses.
-- Frontend renders API-derived values directly into HTML, creating a stored XSS risk if malicious or unvalidated data is persisted.
+- Animal-paddock operations are not atomic; partial failures can desynchronize paddock counts from real assignments.
+- Multi-step writes are not consistently wrapped in transaction boundaries, so failure mid-flow can persist invalid state.
+- Constraint violations are not consistently translated into safe, predictable client responses.
+- Frontend pages render API-derived values directly into HTML, creating stored XSS risk if malicious values are persisted.
 
-These issues directly impact trustworthiness of core data and expose the system to correctness and security failures.
+Why first: these issues directly threaten data trust, service stability, and baseline security.
 
 ### P1: API Consistency and UX Reliability (Fix Next)
-- Pagination lacks stable ordering, causing shifting or duplicated results across requests.
-- Pagination behavior is inconsistent between client and server.
-- Input validation is uneven across endpoints (bounds, types, and constraints).
-- Inconsistent HTTP status codes for create/update operations.
+- Pagination behavior is inconsistent between client and server semantics.
+- Pagination lacks deterministic ordering, causing shifted or duplicated records across requests.
+- Input validation is uneven across endpoints (bounds, type checks, and assignment constraints).
+- Create/update status code behavior is inconsistent across routes.
 
-These issues reduce predictability and make both frontend integration and testing unreliable.
+Why next: these are user-visible correctness issues that reduce predictability and test reliability.
 
 ### P2: Scalability and Maintainability (Defer)
-- N+1 query pattern appears in animal-related data enrichment (e.g., latest events per entity).
-- Error states in the frontend degrade silently in some cases.
-- Date handling depends on implicit string formatting conventions.
-- Repository includes runtime artifacts that should not be versioned.
+- Animal listing uses an N+1 enrichment pattern.
+- Frontend error handling can fail silently.
+- Date handling depends on string-format discipline.
+- Runtime SQLite artifacts should be excluded from version control.
 
-These do not affect correctness immediately but will become costly as the system scales.
+Why later: lower immediate risk than corruption, crash, and security, but important before production hardening.
 
 ## Execution Plan
-1. Introduce transactional boundaries and consistent error handling (P0).
-2. Stabilize pagination, validation, and API contracts (P1).
-3. Refactor query patterns and improve frontend resilience (P2).
+1. Stabilize P0 with transactions, consistent error mapping, and safe rendering.
+2. Align pagination, validation, and API contracts for P1.
+3. Address performance and maintenance concerns in P2.
