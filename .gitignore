@@ -3,5 +3,3 @@ node_modules/
 track2-fullstack/app/backend/farmtracker.db
 track2-fullstack/app/backend/farmtracker.db-wal
 track2-fullstack/app/backend/farmtracker.db-shm
-track2-fullstack/app/backend/farmtracker.db-shm
-track2-fullstack/app/backend/farmtracker.db-wal
