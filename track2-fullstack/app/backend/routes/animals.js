@@ -9,7 +9,7 @@ router.get('/', (req, res) => {
   const offset = page * limit;
 
   const animals = db.prepare(
-    'SELECT * FROM animals LIMIT ? OFFSET ?'
+    'SELECT * FROM animals ORDER BY id ASC LIMIT ? OFFSET ?'
   ).all(limit, offset);
 
   const result = animals.map(animal => {
