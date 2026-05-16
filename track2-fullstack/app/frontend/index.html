@@ -18,6 +18,7 @@
     <div class="page-header">
       <h2>Paddocks</h2>
     </div>
+    <div id="paddocks-error" class="error-banner" hidden></div>
     <div id="paddocks-grid" class="card-grid">
       <p class="loading">Loading…</p>
     </div>
@@ -25,16 +26,31 @@
   <script src="app.js"></script>
   <script>
     async function loadPaddocks() {
-      const paddocks = await api.get('/paddocks');
       const grid = document.getElementById('paddocks-grid');
+      const errorBanner = document.getElementById('paddocks-error');
+      errorBanner.hidden = true;
+      errorBanner.textContent = '';
+      grid.innerHTML = '<p class="loading">Loading...</p>';
+
+      let paddocks;
+      try {
+        paddocks = await api.get('/paddocks');
+      } catch (err) {
+        errorBanner.textContent = err.message || 'Failed to load paddocks.';
+        errorBanner.hidden = false;
+        grid.innerHTML = '<p class="empty">Unable to load paddocks.</p>';
+        return;
+      }
+
       if (!paddocks.length) {
         grid.innerHTML = '<p class="empty">No paddocks found.</p>';
         return;
       }
+
       grid.innerHTML = paddocks.map(p => `
         <div class="card">
-          <h3>${p.name}</h3>
-          <p class="stat">${p.animal_count} / ${p.capacity} animals</p>
+          <h3>${escapeHtml(p.name)}</h3>
+          <p class="stat">${escapeHtml(p.animal_count)} / ${escapeHtml(p.capacity)} animals</p>
           <div class="capacity-bar">
             <div class="capacity-fill" style="width: ${Math.min(100, Math.round((p.animal_count / p.capacity) * 100))}%"></div>
           </div>

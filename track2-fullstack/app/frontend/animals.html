@@ -18,6 +18,7 @@
     <div class="page-header">
       <h2>Animals</h2>
     </div>
+    <div id="animals-error" class="error-banner" hidden></div>
     <table>
       <thead>
         <tr>
@@ -45,8 +46,23 @@
     const LIMIT = 5;
 
     async function loadAnimals() {
-      const animals = await api.get(`/animals?page=${currentPage}&limit=${LIMIT}`);
       const tbody = document.getElementById('animals-body');
+      const errorBanner = document.getElementById('animals-error');
+      errorBanner.hidden = true;
+      errorBanner.textContent = '';
+      tbody.innerHTML = '<tr><td colspan="6" class="loading">Loading...</td></tr>';
+
+      let animals;
+      try {
+        animals = await api.get(`/animals?page=${currentPage}&limit=${LIMIT}`);
+      } catch (err) {
+        errorBanner.textContent = err.message || 'Failed to load animals.';
+        errorBanner.hidden = false;
+        tbody.innerHTML = '<tr><td colspan="6" class="empty">Unable to load animals.</td></tr>';
+        document.getElementById('prev-btn').disabled = currentPage === 0;
+        document.getElementById('next-btn').disabled = true;
+        return;
+      }
 
       if (!animals.length) {
         tbody.innerHTML = '<tr><td colspan="6" class="empty">No animals found.</td></tr>';
@@ -56,16 +72,17 @@
 
       tbody.innerHTML = animals.map(a => {
         const event = a.latest_health_event
-          ? `${a.latest_health_event.event_type} (${a.latest_health_event.date})`
+          ? `${escapeHtml(a.latest_health_event.event_type)} (${escapeHtml(a.latest_health_event.date)})`
           : '—';
+        const paddockValue = a.paddock_id ?? '—';
         return `
           <tr>
-            <td>${a.tag_number}</td>
-            <td>${a.name}</td>
-            <td>${a.breed ?? '—'}</td>
-            <td>${a.paddock_id ?? '—'}</td>
+            <td>${escapeHtml(a.tag_number)}</td>
+            <td>${escapeHtml(a.name)}</td>
+            <td>${escapeHtml(a.breed ?? '—')}</td>
+            <td>${escapeHtml(paddockValue)}</td>
             <td>${event}</td>
-            <td><a href="animal-detail.html?id=${a.id}">View</a></td>
+            <td><a href="animal-detail.html?id=${encodeURIComponent(a.id)}">View</a></td>
           </tr>
         `;
       }).join('');

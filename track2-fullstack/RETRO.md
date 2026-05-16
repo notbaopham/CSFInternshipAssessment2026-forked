@@ -1,0 +1,7 @@
+# Retrospective
+
+I kept the solution deliberately small and incremental. The main trade-off was to preserve the existing Express + SQLite + vanilla HTML/JS stack instead of introducing a larger framework or a deeper backend abstraction layer. That made the fixes easier to verify, kept the deployment model simple, and reduced the risk of solving the assignment by over-engineering it. The downside is that some patterns are still fairly manual, especially the direct fetch-driven frontend and the route-by-route API implementation.
+
+If I had more time, I would push the architectural boundary further by removing mutable derived state from the database model entirely and replacing it with a clearer read model or view layer. I would also extract the repeated validation and response-mapping logic into shared backend helpers so the route handlers stay thinner and easier to extend. On the frontend, I would probably consolidate the duplicated error/loading state handling across the pages.
+
+I deliberately left the overall app shape alone. The project is small, and the goal was to improve correctness and maintainability without rewriting the stack or changing the user-facing workflow. I also left the UI mostly intact apart from the targeted fixes and polish, because the assignment was about stabilizing and extending the inherited codebase rather than redesigning it from scratch.
