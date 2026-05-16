@@ -21,6 +21,7 @@
 
     <section id="health-section" style="display:none">
       <h3>Health Events</h3>
+      <div id="events-error" class="error-banner" hidden></div>
       <table>
         <thead>
           <tr><th>Date</th><th>Type</th><th>Vet</th><th>Notes</th></tr>
@@ -44,12 +45,37 @@
         <button type="submit">Log Event</button>
       </form>
     </section>
+
+    <section id="weights-section" style="display:none">
+      <h3>Weight History</h3>
+      <div id="weights-error" class="error-banner" hidden></div>
+      <p id="latest-weight" class="latest-weight loading">Loading…</p>
+
+      <table>
+        <thead>
+          <tr><th>Date</th><th>Weight (kg)</th><th>Notes</th></tr>
+        </thead>
+        <tbody id="weights-body"></tbody>
+      </table>
+
+      <h4>Log Weight Measurement</h4>
+      <form id="weight-form">
+        <label>Weight (kg)
+          <input type="number" name="weight_kg" step="0.1" min="0" required>
+        </label>
+        <label>Date <input type="date" name="date" required></label>
+        <label>Notes <input type="text" name="notes" placeholder="Optional"></label>
+        <button type="submit">Log Weight</button>
+      </form>
+    </section>
   </main>
   <script src="app.js"></script>
   <script>
     const params = new URLSearchParams(window.location.search);
     const animalId = params.get('id');
     const errorBanner = document.getElementById('animal-error');
+    const eventsErrorBanner = document.getElementById('events-error');
+    const weightsErrorBanner = document.getElementById('weights-error');
 
     function showError(message) {
       errorBanner.textContent = message;
@@ -61,10 +87,32 @@
       errorBanner.hidden = true;
     }
 
+    function showSectionError(banner, message) {
+      banner.textContent = message;
+      banner.hidden = false;
+    }
+
+    function clearSectionError(banner) {
+      banner.textContent = '';
+      banner.hidden = true;
+    }
+
+    function formatPrettyDate(value) {
+      if (!value) return '—';
+      const parsed = new Date(`${value}T00:00:00Z`);
+      if (Number.isNaN(parsed.getTime())) return value;
+      try {
+        return new Intl.DateTimeFormat(undefined, { timeZone: 'UTC', day: '2-digit', month: 'short', year: 'numeric' }).format(parsed);
+      } catch (err) {
+        return value;
+      }
+    }
+
     async function load() {
       if (!animalId) {
         showError('Missing animal id in the URL.');
         document.getElementById('animal-detail').innerHTML = '<p class="empty">No animal selected.</p>';
+        document.getElementById('weights-section').style.display = 'none';
         document.getElementById('health-section').style.display = 'none';
         return;
       }
@@ -94,24 +142,25 @@
         </dl>
       `;
 
+      document.getElementById('weights-section').style.display = 'block';
       document.getElementById('health-section').style.display = 'block';
+      await loadWeights();
       await loadEvents();
     }
 
     async function loadEvents() {
       const tbody = document.getElementById('events-body');
       tbody.innerHTML = '<tr><td colspan="4" class="loading">Loading...</td></tr>';
+      clearSectionError(eventsErrorBanner);
 
       let events;
       try {
         events = await api.get(`/animals/${animalId}/health-events`);
       } catch (err) {
-        showError(err.message || 'Failed to load health events.');
+        showSectionError(eventsErrorBanner, err.message || 'Failed to load health events.');
         tbody.innerHTML = '<tr><td colspan="4" class="empty">Unable to load events.</td></tr>';
         return;
       }
-
-      clearError();
 
       tbody.innerHTML = events.length
         ? events.map(e => `
@@ -125,6 +174,46 @@
         : '<tr><td colspan="4" class="empty">No events recorded.</td></tr>';
     }
 
+    async function loadWeights() {
+      const latest = document.getElementById('latest-weight');
+      const tbody = document.getElementById('weights-body');
+
+      latest.className = 'latest-weight loading';
+      latest.textContent = 'Loading...';
+      tbody.innerHTML = '<tr><td colspan="3" class="loading">Loading...</td></tr>';
+      clearSectionError(weightsErrorBanner);
+
+      let weights;
+      try {
+        weights = await api.get(`/animals/${animalId}/weights`);
+      } catch (err) {
+        showSectionError(weightsErrorBanner, err.message || 'Failed to load weights.');
+        latest.className = 'latest-weight empty';
+        latest.textContent = 'Unable to load weights.';
+        tbody.innerHTML = '<tr><td colspan="3" class="empty">Unable to load weights.</td></tr>';
+        return;
+      }
+
+      if (!weights.length) {
+        latest.className = 'latest-weight empty';
+        latest.textContent = 'No weights recorded.';
+        tbody.innerHTML = '<tr><td colspan="3" class="empty">No weights recorded.</td></tr>';
+        return;
+      }
+
+      const mostRecent = weights[0];
+      latest.className = 'latest-weight';
+      latest.textContent = `Latest: ${mostRecent.weight_kg} kg on ${formatPrettyDate(mostRecent.date)}`;
+
+      tbody.innerHTML = weights.map(w => `
+        <tr>
+          <td>${escapeHtml(w.date)}</td>
+          <td>${escapeHtml(w.weight_kg)}</td>
+          <td>${escapeHtml(w.notes ?? '—')}</td>
+        </tr>
+      `).join('');
+    }
+
     document.getElementById('event-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const data = Object.fromEntries(new FormData(e.target));
@@ -133,7 +222,21 @@
         e.target.reset();
         await loadEvents();
       } catch (err) {
-        showError(err.message || 'Failed to log health event.');
+        showSectionError(eventsErrorBanner, err.message || 'Failed to log health event.');
+      }
+    });
+
+    document.getElementById('weight-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      const data = Object.fromEntries(new FormData(form));
+      if (data.notes === '') delete data.notes;
+      try {
+        await api.post(`/animals/${animalId}/weights`, data);
+        form.reset();
+        await loadWeights();
+      } catch (err) {
+        showSectionError(weightsErrorBanner, err.message || 'Failed to log weight.');
       }
     });
 
