@@ -1,0 +1,10 @@
+# Ignore runtime SQLite artifacts
+farmtracker.db
+farmtracker.db-shm
+farmtracker.db-wal
+
+# Node modules (local to backend)
+node_modules/
+
+# Logs
+npm-debug.log*
