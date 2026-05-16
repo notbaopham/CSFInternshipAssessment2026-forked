@@ -126,6 +126,7 @@
       } catch (err) {
         showError(err.message || 'Failed to load animal details.');
         document.getElementById('animal-detail').innerHTML = '<p class="empty">Unable to load animal details.</p>';
+        document.getElementById('weights-section').style.display = 'none';
         document.getElementById('health-section').style.display = 'none';
         return;
       }
