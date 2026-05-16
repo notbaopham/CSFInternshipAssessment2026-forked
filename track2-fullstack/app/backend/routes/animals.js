@@ -32,7 +32,7 @@ router.get('/', (req, res) => {
         he.animal_id,
         he.event_type,
         he.notes,
-        he.date,
+        strftime('%Y-%m-%d', he.date) AS date,
         he.vet_name,
         ROW_NUMBER() OVER (
           PARTITION BY he.animal_id
@@ -41,7 +41,12 @@ router.get('/', (req, res) => {
       FROM health_events he
     )
     SELECT
-      a.*,
+      a.id,
+      a.name,
+      a.tag_number,
+      a.breed,
+      strftime('%Y-%m-%d', a.date_of_birth) AS date_of_birth,
+      a.paddock_id,
       le.id AS latest_event_id,
       le.animal_id AS latest_event_animal_id,
       le.event_type AS latest_event_type,
@@ -122,7 +127,10 @@ router.post('/', (req, res) => {
       }
     });
 
-    const animal = db.prepare('SELECT * FROM animals WHERE id = ?').get(animalId);
+    const animal = db.prepare(`
+      SELECT id, name, tag_number, breed, strftime('%Y-%m-%d', date_of_birth) AS date_of_birth, paddock_id
+      FROM animals WHERE id = ?
+    `).get(animalId);
     return res.status(201).json(animal);
   } catch (err) {
     return handleDbError(res, err);
@@ -130,7 +138,10 @@ router.post('/', (req, res) => {
 });
 
 router.get('/:id', (req, res) => {
-  const animal = db.prepare('SELECT * FROM animals WHERE id = ?').get(req.params.id);
+  const animal = db.prepare(`
+    SELECT id, name, tag_number, breed, strftime('%Y-%m-%d', date_of_birth) AS date_of_birth, paddock_id
+    FROM animals WHERE id = ?
+  `).get(req.params.id);
   if (!animal) return res.status(404).json({ error: 'Animal not found' });
   res.json(animal);
 });
@@ -192,7 +203,10 @@ router.put('/:id', (req, res) => {
       }
     });
 
-    const updated = db.prepare('SELECT * FROM animals WHERE id = ?').get(req.params.id);
+    const updated = db.prepare(`
+      SELECT id, name, tag_number, breed, strftime('%Y-%m-%d', date_of_birth) AS date_of_birth, paddock_id
+      FROM animals WHERE id = ?
+    `).get(req.params.id);
     return res.json(updated);
   } catch (err) {
     return handleDbError(res, err);
@@ -220,11 +234,14 @@ router.delete('/:id', (req, res) => {
 });
 
 router.get('/:id/health-events', (req, res) => {
-  const animal = db.prepare('SELECT * FROM animals WHERE id = ?').get(req.params.id);
+  const animal = db.prepare('SELECT id FROM animals WHERE id = ?').get(req.params.id);
   if (!animal) return res.status(404).json({ error: 'Animal not found' });
 
   const events = db.prepare(
-    'SELECT * FROM health_events WHERE animal_id = ? ORDER BY date DESC'
+    `SELECT id, animal_id, event_type, notes, strftime('%Y-%m-%d', date) AS date, vet_name
+     FROM health_events
+     WHERE animal_id = ?
+     ORDER BY date DESC`
   ).all(req.params.id);
   res.json(events);
 });
@@ -247,7 +264,10 @@ router.post('/:id/health-events', (req, res) => {
       'INSERT INTO health_events (animal_id, event_type, notes, date, vet_name) VALUES (?, ?, ?, ?, ?)'
     ).run(req.params.id, event_type, notes ?? null, date, vet_name ?? null);
 
-    const event = db.prepare('SELECT * FROM health_events WHERE id = ?').get(result.lastInsertRowid);
+    const event = db.prepare(
+      `SELECT id, animal_id, event_type, notes, strftime('%Y-%m-%d', date) AS date, vet_name
+       FROM health_events WHERE id = ?`
+    ).get(result.lastInsertRowid);
     return res.status(201).json(event);
   } catch (err) {
     return handleDbError(res, err);
