@@ -28,7 +28,7 @@ Why next: these are user-visible correctness issues that reduce predictability a
 - Runtime SQLite artifacts should be excluded from version control.
 - `Paddock.id` is declared with AUTOINCREMENT, deleting table rows but not resetting the sequence, making IDs appear to randomly jump.
 
-Why later: lower immediate risk than corruption, crash, and security, but important before production hardening.
+Why later: lower immediate risk than corruption, crash, and security, but important before production hardening, or only affecting reseeding/resetting db workflow in dev/test environment
 
 ## Execution Plan
 1. Stabilize P0 with transactions, consistent error mapping, and safe rendering.
