@@ -8,6 +8,17 @@ function parseInteger(value) {
   return Number.isInteger(parsed) ? parsed : null;
 }
 
+function parseNumber(value) {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
 function isValidIsoDate(value) {
   if (typeof value !== 'string') return false;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -272,6 +283,71 @@ router.post('/:id/health-events', (req, res) => {
   } catch (err) {
     return handleDbError(res, err);
   }
+});
+
+router.post('/:id/weights', (req, res) => {
+  const { weight_kg, date, notes } = req.body;
+
+  const parsedWeight = parseNumber(weight_kg);
+  if (parsedWeight === null || parsedWeight <= 0) {
+    return res.status(422).json({ error: 'weight_kg must be a positive number' });
+  }
+
+  if (!date) {
+    return res.status(400).json({ error: 'date is required' });
+  }
+  if (!isValidIsoDate(date)) {
+    return res.status(400).json({ error: 'date must be in YYYY-MM-DD format' });
+  }
+
+  if (notes !== undefined && notes !== null && typeof notes !== 'string') {
+    return res.status(400).json({ error: 'notes must be a string' });
+  }
+
+  try {
+    let weightId;
+    withTransaction(() => {
+      const animal = db.prepare('SELECT id FROM animals WHERE id = ?').get(req.params.id);
+      if (!animal) {
+        const err = new Error('Animal not found');
+        err.statusCode = 404;
+        throw err;
+      }
+
+      const result = db.prepare(
+        'INSERT INTO weights (animal_id, weight_kg, date, notes) VALUES (?, ?, ?, ?)'
+      ).run(req.params.id, parsedWeight, date, notes ?? null);
+
+      weightId = result.lastInsertRowid;
+    });
+
+    const weight = db.prepare(
+      `SELECT id, animal_id, weight_kg, strftime('%Y-%m-%d', date) AS date, notes
+       FROM weights
+       WHERE id = ?`
+    ).get(weightId);
+
+    return res.status(201).json(weight);
+  } catch (err) {
+    if (err && err.statusCode === 404) {
+      return res.status(404).json({ error: 'Animal not found' });
+    }
+    return handleDbError(res, err);
+  }
+});
+
+router.get('/:id/weights', (req, res) => {
+  const animal = db.prepare('SELECT id FROM animals WHERE id = ?').get(req.params.id);
+  if (!animal) return res.status(404).json({ error: 'Animal not found' });
+
+  const weights = db.prepare(
+    `SELECT id, animal_id, weight_kg, strftime('%Y-%m-%d', date) AS date, notes
+     FROM weights
+     WHERE animal_id = ?
+     ORDER BY date DESC, id DESC`
+  ).all(req.params.id);
+
+  return res.json(weights);
 });
 
 module.exports = router;
