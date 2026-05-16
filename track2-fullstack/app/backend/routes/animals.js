@@ -2,6 +2,26 @@ const express = require('express');
 const router = express.Router();
 const { db, withTransaction } = require('../db');
 
+function handleDbError(res, err) {
+  const message = String(err && err.message ? err.message : '');
+  const code = String(err && err.code ? err.code : '');
+  const isConstraint = code.startsWith('SQLITE_CONSTRAINT') || message.includes('SQLITE_CONSTRAINT') || message.includes('constraint failed');
+  const isUnique = code.includes('UNIQUE') || message.includes('UNIQUE');
+  const isForeignKey = code.includes('FOREIGN KEY') || message.includes('FOREIGN KEY');
+
+  if (isConstraint) {
+    if (isUnique) {
+      return res.status(409).json({ error: 'Resource already exists' });
+    }
+    if (isForeignKey) {
+      return res.status(404).json({ error: 'Related record not found' });
+    }
+    return res.status(400).json({ error: 'Constraint violation' });
+  }
+
+  return res.status(500).json({ error: 'Internal server error' });
+}
+
 router.get('/', (req, res) => {
   const page = parseInt(req.query.page) || 0;
   const limit = parseInt(req.query.limit) || 10;
@@ -30,22 +50,26 @@ router.post('/', (req, res) => {
     return res.status(400).json({ error: 'name and tag_number are required' });
   }
 
-  let animalId;
-  withTransaction(() => {
-    const result = db.prepare(
-      'INSERT INTO animals (name, tag_number, breed, date_of_birth, paddock_id) VALUES (?, ?, ?, ?, ?)'
-    ).run(name, tag_number, breed ?? null, date_of_birth ?? null, paddock_id ?? null);
-    animalId = result.lastInsertRowid;
+  try {
+    let animalId;
+    withTransaction(() => {
+      const result = db.prepare(
+        'INSERT INTO animals (name, tag_number, breed, date_of_birth, paddock_id) VALUES (?, ?, ?, ?, ?)'
+      ).run(name, tag_number, breed ?? null, date_of_birth ?? null, paddock_id ?? null);
+      animalId = result.lastInsertRowid;
 
-    if (paddock_id) {
-      db.prepare(
-        'UPDATE paddocks SET animal_count = animal_count + 1 WHERE id = ?'
-      ).run(paddock_id);
-    }
-  });
+      if (paddock_id) {
+        db.prepare(
+          'UPDATE paddocks SET animal_count = animal_count + 1 WHERE id = ?'
+        ).run(paddock_id);
+      }
+    });
 
-  const animal = db.prepare('SELECT * FROM animals WHERE id = ?').get(animalId);
-  res.json(animal);
+    const animal = db.prepare('SELECT * FROM animals WHERE id = ?').get(animalId);
+    return res.json(animal);
+  } catch (err) {
+    return handleDbError(res, err);
+  }
 });
 
 router.get('/:id', (req, res) => {
@@ -66,45 +90,53 @@ router.put('/:id', (req, res) => {
     paddock_id:    'paddock_id' in req.body ? req.body.paddock_id : animal.paddock_id,
   };
 
-  withTransaction(() => {
-    db.prepare(`
-      UPDATE animals
-      SET name = ?, tag_number = ?, breed = ?, date_of_birth = ?, paddock_id = ?
-      WHERE id = ?
-    `).run(updates.name, updates.tag_number, updates.breed, updates.date_of_birth, updates.paddock_id, req.params.id);
+  try {
+    withTransaction(() => {
+      db.prepare(`
+        UPDATE animals
+        SET name = ?, tag_number = ?, breed = ?, date_of_birth = ?, paddock_id = ?
+        WHERE id = ?
+      `).run(updates.name, updates.tag_number, updates.breed, updates.date_of_birth, updates.paddock_id, req.params.id);
 
-    if (updates.paddock_id !== animal.paddock_id) {
-      if (animal.paddock_id) {
-        db.prepare(
-          'UPDATE paddocks SET animal_count = animal_count - 1 WHERE id = ?'
-        ).run(animal.paddock_id);
+      if (updates.paddock_id !== animal.paddock_id) {
+        if (animal.paddock_id) {
+          db.prepare(
+            'UPDATE paddocks SET animal_count = animal_count - 1 WHERE id = ?'
+          ).run(animal.paddock_id);
+        }
+        if (updates.paddock_id) {
+          db.prepare(
+            'UPDATE paddocks SET animal_count = animal_count + 1 WHERE id = ?'
+          ).run(updates.paddock_id);
+        }
       }
-      if (updates.paddock_id) {
-        db.prepare(
-          'UPDATE paddocks SET animal_count = animal_count + 1 WHERE id = ?'
-        ).run(updates.paddock_id);
-      }
-    }
-  });
+    });
 
-  const updated = db.prepare('SELECT * FROM animals WHERE id = ?').get(req.params.id);
-  res.json(updated);
+    const updated = db.prepare('SELECT * FROM animals WHERE id = ?').get(req.params.id);
+    return res.json(updated);
+  } catch (err) {
+    return handleDbError(res, err);
+  }
 });
 
 router.delete('/:id', (req, res) => {
   const animal = db.prepare('SELECT * FROM animals WHERE id = ?').get(req.params.id);
   if (!animal) return res.status(404).json({ error: 'Animal not found' });
 
-  withTransaction(() => {
-    const deleteResult = db.prepare('DELETE FROM animals WHERE id = ?').run(req.params.id);
+  try {
+    withTransaction(() => {
+      const deleteResult = db.prepare('DELETE FROM animals WHERE id = ?').run(req.params.id);
 
-    if (deleteResult.changes && animal.paddock_id) {
-      db.prepare(
-        'UPDATE paddocks SET animal_count = animal_count - 1 WHERE id = ?'
-      ).run(animal.paddock_id);
-    }
-  });
-  res.json({ message: 'deleted' });
+      if (deleteResult.changes && animal.paddock_id) {
+        db.prepare(
+          'UPDATE paddocks SET animal_count = animal_count - 1 WHERE id = ?'
+        ).run(animal.paddock_id);
+      }
+    });
+    return res.json({ message: 'deleted' });
+  } catch (err) {
+    return handleDbError(res, err);
+  }
 });
 
 router.get('/:id/health-events', (req, res) => {
@@ -124,31 +156,18 @@ router.post('/:id/health-events', (req, res) => {
   const { event_type, notes, date, vet_name } = req.body;
   if (!event_type || !date) {
     return res.status(400).json({ error: 'event_type and date are required' });
-
-  function handleDbError(res, err) {
-    const message = String(err && err.message ? err.message : '');
-    const code = String(err && err.code ? err.code : '');
-
-    if (code.startsWith('SQLITE_CONSTRAINT') || message.includes('SQLITE_CONSTRAINT')) {
-      if (message.includes('UNIQUE')) {
-        return res.status(409).json({ error: 'Resource already exists' });
-      }
-      if (message.includes('FOREIGN KEY')) {
-        return res.status(404).json({ error: 'Related record not found' });
-      }
-      return res.status(400).json({ error: 'Constraint violation' });
-    }
-
-    return res.status(500).json({ error: 'Internal server error' });
-  }
   }
 
-  const result = db.prepare(
-    'INSERT INTO health_events (animal_id, event_type, notes, date, vet_name) VALUES (?, ?, ?, ?, ?)'
-  ).run(req.params.id, event_type, notes ?? null, date, vet_name ?? null);
+  try {
+    const result = db.prepare(
+      'INSERT INTO health_events (animal_id, event_type, notes, date, vet_name) VALUES (?, ?, ?, ?, ?)'
+    ).run(req.params.id, event_type, notes ?? null, date, vet_name ?? null);
 
-  const event = db.prepare('SELECT * FROM health_events WHERE id = ?').get(result.lastInsertRowid);
-  res.status(201).json(event);
+    const event = db.prepare('SELECT * FROM health_events WHERE id = ?').get(result.lastInsertRowid);
+    return res.status(201).json(event);
+  } catch (err) {
+    return handleDbError(res, err);
+  }
 });
 
 module.exports = router;

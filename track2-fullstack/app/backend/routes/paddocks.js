@@ -5,12 +5,15 @@ const { db } = require('../db');
 function handleDbError(res, err) {
   const message = String(err && err.message ? err.message : '');
   const code = String(err && err.code ? err.code : '');
+  const isConstraint = code.startsWith('SQLITE_CONSTRAINT') || message.includes('SQLITE_CONSTRAINT') || message.includes('constraint failed');
+  const isUnique = code.includes('UNIQUE') || message.includes('UNIQUE');
+  const isForeignKey = code.includes('FOREIGN KEY') || message.includes('FOREIGN KEY');
 
-  if (code.startsWith('SQLITE_CONSTRAINT') || message.includes('SQLITE_CONSTRAINT')) {
-    if (message.includes('UNIQUE')) {
+  if (isConstraint) {
+    if (isUnique) {
       return res.status(409).json({ error: 'Resource already exists' });
     }
-    if (message.includes('FOREIGN KEY')) {
+    if (isForeignKey) {
       return res.status(404).json({ error: 'Related record not found' });
     }
     return res.status(400).json({ error: 'Constraint violation' });
