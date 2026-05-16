@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { db } = require('../db');
+const { db, withTransaction } = require('../db');
 
 router.get('/', (req, res) => {
   const page = parseInt(req.query.page) || 0;
@@ -30,17 +30,21 @@ router.post('/', (req, res) => {
     return res.status(400).json({ error: 'name and tag_number are required' });
   }
 
-  const result = db.prepare(
-    'INSERT INTO animals (name, tag_number, breed, date_of_birth, paddock_id) VALUES (?, ?, ?, ?, ?)'
-  ).run(name, tag_number, breed ?? null, date_of_birth ?? null, paddock_id ?? null);
+  let animalId;
+  withTransaction(() => {
+    const result = db.prepare(
+      'INSERT INTO animals (name, tag_number, breed, date_of_birth, paddock_id) VALUES (?, ?, ?, ?, ?)'
+    ).run(name, tag_number, breed ?? null, date_of_birth ?? null, paddock_id ?? null);
+    animalId = result.lastInsertRowid;
 
-  if (paddock_id) {
-    db.prepare(
-      'UPDATE paddocks SET animal_count = animal_count + 1 WHERE id = ?'
-    ).run(paddock_id);
-  }
+    if (paddock_id) {
+      db.prepare(
+        'UPDATE paddocks SET animal_count = animal_count + 1 WHERE id = ?'
+      ).run(paddock_id);
+    }
+  });
 
-  const animal = db.prepare('SELECT * FROM animals WHERE id = ?').get(result.lastInsertRowid);
+  const animal = db.prepare('SELECT * FROM animals WHERE id = ?').get(animalId);
   res.json(animal);
 });
 
@@ -62,24 +66,26 @@ router.put('/:id', (req, res) => {
     paddock_id:    'paddock_id' in req.body ? req.body.paddock_id : animal.paddock_id,
   };
 
-  db.prepare(`
-    UPDATE animals
-    SET name = ?, tag_number = ?, breed = ?, date_of_birth = ?, paddock_id = ?
-    WHERE id = ?
-  `).run(updates.name, updates.tag_number, updates.breed, updates.date_of_birth, updates.paddock_id, req.params.id);
+  withTransaction(() => {
+    db.prepare(`
+      UPDATE animals
+      SET name = ?, tag_number = ?, breed = ?, date_of_birth = ?, paddock_id = ?
+      WHERE id = ?
+    `).run(updates.name, updates.tag_number, updates.breed, updates.date_of_birth, updates.paddock_id, req.params.id);
 
-  if (updates.paddock_id !== animal.paddock_id) {
-    if (animal.paddock_id) {
-      db.prepare(
-        'UPDATE paddocks SET animal_count = animal_count - 1 WHERE id = ?'
-      ).run(animal.paddock_id);
+    if (updates.paddock_id !== animal.paddock_id) {
+      if (animal.paddock_id) {
+        db.prepare(
+          'UPDATE paddocks SET animal_count = animal_count - 1 WHERE id = ?'
+        ).run(animal.paddock_id);
+      }
+      if (updates.paddock_id) {
+        db.prepare(
+          'UPDATE paddocks SET animal_count = animal_count + 1 WHERE id = ?'
+        ).run(updates.paddock_id);
+      }
     }
-    if (updates.paddock_id) {
-      db.prepare(
-        'UPDATE paddocks SET animal_count = animal_count + 1 WHERE id = ?'
-      ).run(updates.paddock_id);
-    }
-  }
+  });
 
   const updated = db.prepare('SELECT * FROM animals WHERE id = ?').get(req.params.id);
   res.json(updated);
@@ -89,13 +95,15 @@ router.delete('/:id', (req, res) => {
   const animal = db.prepare('SELECT * FROM animals WHERE id = ?').get(req.params.id);
   if (!animal) return res.status(404).json({ error: 'Animal not found' });
 
-  const deleteResult = db.prepare('DELETE FROM animals WHERE id = ?').run(req.params.id);
+  withTransaction(() => {
+    const deleteResult = db.prepare('DELETE FROM animals WHERE id = ?').run(req.params.id);
 
-  if (deleteResult.changes && animal.paddock_id) {
-    db.prepare(
-      'UPDATE paddocks SET animal_count = animal_count - 1 WHERE id = ?'
-    ).run(animal.paddock_id);
-  }
+    if (deleteResult.changes && animal.paddock_id) {
+      db.prepare(
+        'UPDATE paddocks SET animal_count = animal_count - 1 WHERE id = ?'
+      ).run(animal.paddock_id);
+    }
+  });
   res.json({ message: 'deleted' });
 });
 
