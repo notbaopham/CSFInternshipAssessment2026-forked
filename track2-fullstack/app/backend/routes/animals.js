@@ -124,6 +124,23 @@ router.post('/:id/health-events', (req, res) => {
   const { event_type, notes, date, vet_name } = req.body;
   if (!event_type || !date) {
     return res.status(400).json({ error: 'event_type and date are required' });
+
+  function handleDbError(res, err) {
+    const message = String(err && err.message ? err.message : '');
+    const code = String(err && err.code ? err.code : '');
+
+    if (code.startsWith('SQLITE_CONSTRAINT') || message.includes('SQLITE_CONSTRAINT')) {
+      if (message.includes('UNIQUE')) {
+        return res.status(409).json({ error: 'Resource already exists' });
+      }
+      if (message.includes('FOREIGN KEY')) {
+        return res.status(404).json({ error: 'Related record not found' });
+      }
+      return res.status(400).json({ error: 'Constraint violation' });
+    }
+
+    return res.status(500).json({ error: 'Internal server error' });
+  }
   }
 
   const result = db.prepare(
