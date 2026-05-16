@@ -73,7 +73,7 @@ router.post('/', (req, res) => {
     });
 
     const animal = db.prepare('SELECT * FROM animals WHERE id = ?').get(animalId);
-    return res.json(animal);
+    return res.status(201).json(animal);
   } catch (err) {
     return handleDbError(res, err);
   }
