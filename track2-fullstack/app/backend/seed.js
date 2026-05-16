@@ -2,7 +2,12 @@ const { db, initDb } = require('./db');
 
 initDb();
 
-db.exec('DELETE FROM health_events; DELETE FROM animals; DELETE FROM paddocks;');
+db.exec(`
+  DELETE FROM health_events;
+  DELETE FROM animals;
+  DELETE FROM paddocks;
+  DELETE FROM sqlite_sequence WHERE name IN ('paddocks','animals','health_events','weights');
+`);
 
 const insertPaddock = db.prepare('INSERT INTO paddocks (name, capacity, animal_count) VALUES (?, ?, 0)');
 const northId = insertPaddock.run('North Paddock', 50).lastInsertRowid;

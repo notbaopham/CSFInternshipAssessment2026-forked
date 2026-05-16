@@ -26,6 +26,7 @@ Why next: these are user-visible correctness issues that reduce predictability a
 - Frontend error handling can fail silently.
 - Date handling depends on string-format discipline.
 - Runtime SQLite artifacts should be excluded from version control.
+- `Paddock.id` is declared with AUTOINCREMENT, deleting table rows but not resetting the sequence, making IDs appear to randomly jump.
 
 Why later: lower immediate risk than corruption, crash, and security, but important before production hardening.
 
