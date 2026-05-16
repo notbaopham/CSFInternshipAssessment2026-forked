@@ -1,5 +1,16 @@
 const API_BASE = '/api';
 
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+window.escapeHtml = escapeHtml;
+
 const api = {
   async get(path) {
     const res = await fetch(API_BASE + path);

@@ -56,16 +56,17 @@
 
       tbody.innerHTML = animals.map(a => {
         const event = a.latest_health_event
-          ? `${a.latest_health_event.event_type} (${a.latest_health_event.date})`
+          ? `${escapeHtml(a.latest_health_event.event_type)} (${escapeHtml(a.latest_health_event.date)})`
           : '—';
+        const paddockValue = a.paddock_id ?? '—';
         return `
           <tr>
-            <td>${a.tag_number}</td>
-            <td>${a.name}</td>
-            <td>${a.breed ?? '—'}</td>
-            <td>${a.paddock_id ?? '—'}</td>
+            <td>${escapeHtml(a.tag_number)}</td>
+            <td>${escapeHtml(a.name)}</td>
+            <td>${escapeHtml(a.breed ?? '—')}</td>
+            <td>${escapeHtml(paddockValue)}</td>
             <td>${event}</td>
-            <td><a href="animal-detail.html?id=${a.id}">View</a></td>
+            <td><a href="animal-detail.html?id=${encodeURIComponent(a.id)}">View</a></td>
           </tr>
         `;
       }).join('');
