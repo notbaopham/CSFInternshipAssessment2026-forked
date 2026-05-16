@@ -108,3 +108,24 @@ test('POST /api/animals/:id/health-events creates an event', async () => {
   assert.equal(body.event_type, 'checkup');
   assert.equal(body.animal_id, id);
 });
+
+test('POST /api/animals rejects invalid date_of_birth', async () => {
+  const { status, body } = await post('/animals', {
+    name: 'Invalid Date Animal',
+    tag_number: 'TAG-INVALID',
+    date_of_birth: '2024-02-30',
+  });
+  assert.equal(status, 400);
+  assert.match(body.error, /date_of_birth/i);
+});
+
+test('POST /api/animals/:id/health-events rejects invalid date', async () => {
+  const { body: animals } = await get('/animals?page=0&limit=1');
+  const id = animals[0].id;
+  const { status, body } = await post(`/animals/${id}/health-events`, {
+    event_type: 'checkup',
+    date: '2024-02-30',
+  });
+  assert.equal(status, 400);
+  assert.match(body.error, /date must be/i);
+});

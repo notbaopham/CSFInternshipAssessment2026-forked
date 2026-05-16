@@ -18,6 +18,7 @@
     <div class="page-header">
       <h2>Animals</h2>
     </div>
+    <div id="animals-error" class="error-banner" hidden></div>
     <table>
       <thead>
         <tr>
@@ -45,8 +46,23 @@
     const LIMIT = 5;
 
     async function loadAnimals() {
-      const animals = await api.get(`/animals?page=${currentPage}&limit=${LIMIT}`);
       const tbody = document.getElementById('animals-body');
+      const errorBanner = document.getElementById('animals-error');
+      errorBanner.hidden = true;
+      errorBanner.textContent = '';
+      tbody.innerHTML = '<tr><td colspan="6" class="loading">Loading...</td></tr>';
+
+      let animals;
+      try {
+        animals = await api.get(`/animals?page=${currentPage}&limit=${LIMIT}`);
+      } catch (err) {
+        errorBanner.textContent = err.message || 'Failed to load animals.';
+        errorBanner.hidden = false;
+        tbody.innerHTML = '<tr><td colspan="6" class="empty">Unable to load animals.</td></tr>';
+        document.getElementById('prev-btn').disabled = currentPage === 0;
+        document.getElementById('next-btn').disabled = true;
+        return;
+      }
 
       if (!animals.length) {
         tbody.innerHTML = '<tr><td colspan="6" class="empty">No animals found.</td></tr>';

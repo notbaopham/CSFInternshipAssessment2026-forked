@@ -8,6 +8,13 @@ function parseInteger(value) {
   return Number.isInteger(parsed) ? parsed : null;
 }
 
+function isValidIsoDate(value) {
+  if (typeof value !== 'string') return false;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
 router.get('/', (req, res) => {
   const page = req.query.page === undefined ? 0 : parseInteger(req.query.page);
   const limit = req.query.limit === undefined ? 10 : parseInteger(req.query.limit);
@@ -18,18 +25,57 @@ router.get('/', (req, res) => {
 
   const offset = page * limit;
 
-  const animals = db.prepare(
-    'SELECT * FROM animals ORDER BY id ASC LIMIT ? OFFSET ?'
-  ).all(limit, offset);
+  const animals = db.prepare(`
+    WITH latest_events AS (
+      SELECT
+        he.id,
+        he.animal_id,
+        he.event_type,
+        he.notes,
+        he.date,
+        he.vet_name,
+        ROW_NUMBER() OVER (
+          PARTITION BY he.animal_id
+          ORDER BY he.date DESC, he.id DESC
+        ) AS row_num
+      FROM health_events he
+    )
+    SELECT
+      a.*,
+      le.id AS latest_event_id,
+      le.animal_id AS latest_event_animal_id,
+      le.event_type AS latest_event_type,
+      le.notes AS latest_event_notes,
+      le.date AS latest_event_date,
+      le.vet_name AS latest_event_vet_name
+    FROM animals a
+    LEFT JOIN latest_events le
+      ON le.animal_id = a.id
+      AND le.row_num = 1
+    ORDER BY a.id ASC
+    LIMIT ? OFFSET ?
+  `).all(limit, offset);
 
-  const result = animals.map(animal => {
-    const latestEvent = db.prepare(`
-      SELECT * FROM health_events
-      WHERE animal_id = ?
-      ORDER BY date DESC
-      LIMIT 1
-    `).get(animal.id);
-    return { ...animal, latest_health_event: latestEvent ?? null };
+  const result = animals.map(({ 
+    latest_event_id,
+    latest_event_animal_id,
+    latest_event_type,
+    latest_event_notes,
+    latest_event_date,
+    latest_event_vet_name,
+    ...animal
+  }) => {
+    const latestEvent = latest_event_id
+      ? {
+          id: latest_event_id,
+          animal_id: latest_event_animal_id,
+          event_type: latest_event_type,
+          notes: latest_event_notes,
+          date: latest_event_date,
+          vet_name: latest_event_vet_name,
+        }
+      : null;
+    return { ...animal, latest_health_event: latestEvent };
   });
 
   res.json(result);
@@ -40,6 +86,10 @@ router.post('/', (req, res) => {
 
   if (!name || !tag_number) {
     return res.status(400).json({ error: 'name and tag_number are required' });
+  }
+
+  if (date_of_birth !== undefined && date_of_birth !== null && !isValidIsoDate(date_of_birth)) {
+    return res.status(400).json({ error: 'date_of_birth must be in YYYY-MM-DD format' });
   }
 
   const normalizedPaddockId = paddock_id === undefined || paddock_id === null
@@ -114,6 +164,12 @@ router.put('/:id', (req, res) => {
     paddock_id:    normalizedPaddockId,
   };
 
+  if ('date_of_birth' in req.body && req.body.date_of_birth !== null) {
+    if (!isValidIsoDate(req.body.date_of_birth)) {
+      return res.status(400).json({ error: 'date_of_birth must be in YYYY-MM-DD format' });
+    }
+  }
+
   try {
     withTransaction(() => {
       db.prepare(`
@@ -180,6 +236,10 @@ router.post('/:id/health-events', (req, res) => {
   const { event_type, notes, date, vet_name } = req.body;
   if (!event_type || !date) {
     return res.status(400).json({ error: 'event_type and date are required' });
+  }
+
+  if (!isValidIsoDate(date)) {
+    return res.status(400).json({ error: 'date must be in YYYY-MM-DD format' });
   }
 
   try {

@@ -16,6 +16,7 @@
   </header>
   <main>
     <a href="animals.html" class="back-link">← Back to Animals</a>
+    <div id="animal-error" class="error-banner" hidden></div>
     <div id="animal-detail"><p class="loading">Loading…</p></div>
 
     <section id="health-section" style="display:none">
@@ -48,9 +49,38 @@
   <script>
     const params = new URLSearchParams(window.location.search);
     const animalId = params.get('id');
+    const errorBanner = document.getElementById('animal-error');
+
+    function showError(message) {
+      errorBanner.textContent = message;
+      errorBanner.hidden = false;
+    }
+
+    function clearError() {
+      errorBanner.textContent = '';
+      errorBanner.hidden = true;
+    }
 
     async function load() {
-      const animal = await api.get(`/animals/${animalId}`);
+      if (!animalId) {
+        showError('Missing animal id in the URL.');
+        document.getElementById('animal-detail').innerHTML = '<p class="empty">No animal selected.</p>';
+        document.getElementById('health-section').style.display = 'none';
+        return;
+      }
+
+      clearError();
+      document.getElementById('animal-detail').innerHTML = '<p class="loading">Loading...</p>';
+
+      let animal;
+      try {
+        animal = await api.get(`/animals/${animalId}`);
+      } catch (err) {
+        showError(err.message || 'Failed to load animal details.');
+        document.getElementById('animal-detail').innerHTML = '<p class="empty">Unable to load animal details.</p>';
+        document.getElementById('health-section').style.display = 'none';
+        return;
+      }
 
       document.title = `${animal.name} — FarmTracker`;
       document.getElementById('animal-detail').innerHTML = `
@@ -69,8 +99,20 @@
     }
 
     async function loadEvents() {
-      const events = await api.get(`/animals/${animalId}/health-events`);
       const tbody = document.getElementById('events-body');
+      tbody.innerHTML = '<tr><td colspan="4" class="loading">Loading...</td></tr>';
+
+      let events;
+      try {
+        events = await api.get(`/animals/${animalId}/health-events`);
+      } catch (err) {
+        showError(err.message || 'Failed to load health events.');
+        tbody.innerHTML = '<tr><td colspan="4" class="empty">Unable to load events.</td></tr>';
+        return;
+      }
+
+      clearError();
+
       tbody.innerHTML = events.length
         ? events.map(e => `
             <tr>
@@ -86,9 +128,13 @@
     document.getElementById('event-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const data = Object.fromEntries(new FormData(e.target));
-      await api.post(`/animals/${animalId}/health-events`, data);
-      e.target.reset();
-      await loadEvents();
+      try {
+        await api.post(`/animals/${animalId}/health-events`, data);
+        e.target.reset();
+        await loadEvents();
+      } catch (err) {
+        showError(err.message || 'Failed to log health event.');
+      }
     });
 
     load();

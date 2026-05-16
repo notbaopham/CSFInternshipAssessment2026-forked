@@ -129,3 +129,13 @@ input:focus, select:focus { outline: 2px solid #4a8c2a; border-color: transparen
 
 .loading { color: #aaa; font-size: 0.9rem; }
 .empty { color: #aaa; font-size: 0.875rem; }
+
+.error-banner {
+  background: #fff2f2;
+  border: 1px solid #f0b5b5;
+  color: #7a1b1b;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  margin: 1rem 0;
+  font-size: 0.9rem;
+}
