@@ -106,19 +106,10 @@ test('P0: duplicate paddock name returns 409', async () => {
 });
 
 test('P0: escapeHtml prevents HTML injection', () => {
-  const previousWindow = global.window;
-  global.window = {};
-
   const scriptPath = path.join(__dirname, '..', '..', 'frontend', 'app.js');
   delete require.cache[require.resolve(scriptPath)];
-  require(scriptPath);
+  const { escapeHtml } = require(scriptPath);
 
-  const escaped = global.window.escapeHtml('<img src=x onerror="alert(1)"> & test');
+  const escaped = escapeHtml('<img src=x onerror="alert(1)"> & test');
   assert.equal(escaped, '&lt;img src=x onerror=&quot;alert(1)&quot;&gt; &amp; test');
-
-  if (previousWindow === undefined) {
-    delete global.window;
-  } else {
-    global.window = previousWindow;
-  }
 });

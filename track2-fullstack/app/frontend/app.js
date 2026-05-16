@@ -9,7 +9,13 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
-window.escapeHtml = escapeHtml;
+if (typeof window !== 'undefined') {
+  window.escapeHtml = escapeHtml;
+}
+
+if (typeof module !== 'undefined') {
+  module.exports = { escapeHtml };
+}
 
 const api = {
   async get(path) {
